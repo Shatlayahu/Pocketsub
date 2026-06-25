@@ -24,9 +24,10 @@ export function getYouTubeId(value) {
   return ''
 }
 
-export function buildYouTubeEmbedUrl(videoId, start = 0, end = 0) {
+export function buildYouTubeEmbedUrl(videoId, start = 0, end = 0, autoplay = false) {
   const params = new URLSearchParams({
-    autoplay: '1',
+    autoplay: autoplay ? '1' : '0',
+    controls: '1',
     rel: '0',
     modestbranding: '1',
     playsinline: '1',

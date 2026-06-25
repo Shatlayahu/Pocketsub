@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import TabBar from '../components/TabBar'
 import { getEarningsSummary, formatCurrency } from '../utils/earnings'
 import { getTranslator } from '../utils/i18n'
@@ -96,13 +96,13 @@ function buildCurve(points) {
   }, '')
 }
 
-function StatisticChart({ title, unit, points, labels, periodLabel }) {
+function StatisticChart({ title, unit, points, labels, periodLabel, className = '' }) {
   const marker = points[points.length - 1] || points[0]
   const maxValue = Math.max(...points.map((point) => point.value), 1)
   const axisValues = [maxValue, maxValue * 0.66, maxValue * 0.33]
 
   return (
-    <section className="stat-chart-card">
+    <section className={`stat-chart-card ${className}`}>
       <header>
         <h2>{title}</h2>
         <span>{periodLabel}</span>
@@ -138,15 +138,30 @@ function StatisticChart({ title, unit, points, labels, periodLabel }) {
   )
 }
 
-function AccountPage({ projects, profile, isLoggedIn, onSaveProfile, onLogin, onLogout, onNavigate }) {
+function AccountPage({
+  projects,
+  profile,
+  isLoggedIn,
+  onSaveProfile,
+  onLogin,
+  onLogout,
+  onResetPassword,
+  onResendVerification,
+  getAuthErrorMessage,
+  onNavigate,
+}) {
   const [authMode, setAuthMode] = useState('login')
   const [authMessage, setAuthMessage] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsForm, setSettingsForm] = useState(profile)
   const [settingsMessage, setSettingsMessage] = useState('')
   const [settingsPassword, setSettingsPassword] = useState({ next: '', confirm: '' })
+  const [verificationMessage, setVerificationMessage] = useState('')
+  const [verificationCooldown, setVerificationCooldown] = useState(0)
+  const [resetCooldown, setResetCooldown] = useState(0)
   const [loginForm, setLoginForm] = useState({
     userName: '',
+    email: '',
     password: '',
     confirmPassword: '',
   })
@@ -154,6 +169,20 @@ function AccountPage({ projects, profile, isLoggedIn, onSaveProfile, onLogin, on
   const t = getTranslator(profile.language)
   const accountCharts = useMemo(() => buildAccountCharts(projects, profile.language), [profile.language, projects])
   const chartPeriodLabel = profile.language === 'en' ? 'Last 6 months' : '最近 6 个月'
+
+  useEffect(() => {
+    if (verificationCooldown === 0 && resetCooldown === 0) {
+      return undefined
+    }
+
+    const timer = setInterval(() => {
+      setVerificationCooldown((current) => Math.max(0, current - 1))
+      setResetCooldown((current) => Math.max(0, current - 1))
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [verificationCooldown, resetCooldown])
+
   const completedProjects = projects.filter((project) => {
     const progress = getProgress(project.subtitles)
     return progress.total > 0 && progress.done === progress.total
@@ -172,8 +201,9 @@ function AccountPage({ projects, profile, isLoggedIn, onSaveProfile, onLogin, on
 
   if (!isLoggedIn) {
     const isRegister = authMode === 'register'
-    const title = isRegister ? t('registerTitle') : t('loginTitle')
-    const helperText = isRegister ? t('registerHelp') : t('loginHelp')
+    const isReset = authMode === 'reset'
+    const title = isRegister ? t('registerTitle') : isReset ? t('resetPassword') : t('loginTitle')
+    const helperText = isRegister ? t('registerHelp') : isReset ? t('resetPasswordHelp') : t('loginHelp')
 
     return (
       <main className={`page account-page ${profile.language === 'en' ? 'lang-en' : ''}`}>
@@ -184,34 +214,73 @@ function AccountPage({ projects, profile, isLoggedIn, onSaveProfile, onLogin, on
             <button type="button" className={authMode === 'login' ? 'active' : ''} onClick={() => { setAuthMode('login'); setAuthMessage('') }}>{t('signIn')}</button>
             <button type="button" className={authMode === 'register' ? 'active' : ''} onClick={() => { setAuthMode('register'); setAuthMessage('') }}>{t('register')}</button>
           </div>
-          <span className="field-label">{isRegister ? 'Create account' : 'Sign in'}</span>
+          <span className="field-label">{isRegister ? 'Create account' : isReset ? 'Reset password' : 'Sign in'}</span>
           <h2>{title}</h2>
           <p>{helperText}</p>
           <form
             className="login-form"
-            onSubmit={(event) => {
+            onSubmit={async (event) => {
               event.preventDefault()
               setAuthMessage('')
+
+              if (!loginForm.email.trim()) {
+                setAuthMessage(t('emailRequired'))
+                return
+              }
+
+              if (isReset) {
+                try {
+                  await onResetPassword(loginForm.email)
+                  setAuthMessage(t('resetEmailSent'))
+                  setResetCooldown(60)
+                  setAuthMode('login')
+                } catch (error) {
+                  setAuthMessage(getAuthErrorMessage(error))
+                }
+                return
+              }
 
               if (isRegister && loginForm.password !== loginForm.confirmPassword) {
                 setAuthMessage(t('passwordsMismatch'))
                 return
               }
 
-              onLogin(loginForm)
+              try {
+                await onLogin({ ...loginForm, mode: isRegister ? 'register' : 'login' })
+                if (isRegister) {
+                  setAuthMessage(t('verificationEmailSent'))
+                }
+              } catch (error) {
+                setAuthMessage(getAuthErrorMessage(error))
+              }
             }}
           >
+            {isRegister ? (
+              <label>
+                <span className="field-label">{t('username')}</span>
+                <input
+                  autoComplete="username"
+                  placeholder={t('enterUsername')}
+                  value={loginForm.userName}
+                  onChange={(event) => {
+                    setLoginForm((current) => ({ ...current, userName: event.target.value }))
+                  }}
+                />
+              </label>
+            ) : null}
             <label>
-              <span className="field-label">{t('username')}</span>
+              <span className="field-label">{t('email')}</span>
               <input
-                autoComplete="username"
-                placeholder={t('enterUsername')}
-                value={loginForm.userName}
+                type="email"
+                autoComplete="email"
+                placeholder={t('enterEmail')}
+                value={loginForm.email}
                 onChange={(event) => {
-                  setLoginForm((current) => ({ ...current, userName: event.target.value }))
+                  setLoginForm((current) => ({ ...current, email: event.target.value }))
                 }}
               />
             </label>
+            {!isReset ? (
             <label>
               <span className="field-label">{t('password')}</span>
               <input
@@ -224,6 +293,7 @@ function AccountPage({ projects, profile, isLoggedIn, onSaveProfile, onLogin, on
                 }}
               />
             </label>
+            ) : null}
             {isRegister ? (
               <label>
                 <span className="field-label">{t('confirmPassword')}</span>
@@ -239,8 +309,18 @@ function AccountPage({ projects, profile, isLoggedIn, onSaveProfile, onLogin, on
               </label>
             ) : null}
             {authMessage ? <p className="auth-message">{authMessage}</p> : null}
-            <button type="submit" className="primary">
-              {isRegister ? t('registerAndLogin') : t('signIn')}
+            <button type="submit" className="primary" disabled={isReset && resetCooldown > 0}>
+              {isRegister ? t('registerAndLogin') : isReset ? (resetCooldown > 0 ? `${t('sendReset')} (${resetCooldown}s)` : t('sendReset')) : t('signIn')}
+            </button>
+            <button
+              type="button"
+              className="auth-link-button"
+              onClick={() => {
+                setAuthMessage('')
+                setAuthMode(isReset ? 'login' : 'reset')
+              }}
+            >
+              {isReset ? t('backToLogin') : t('forgotPassword')}
             </button>
           </form>
         </section>
@@ -249,7 +329,7 @@ function AccountPage({ projects, profile, isLoggedIn, onSaveProfile, onLogin, on
   }
 
   return (
-    <main className={`page account-page ${profile.language === 'en' ? 'lang-en' : ''}`}>
+    <main className={`page account-page ${!profile.emailVerified ? 'has-email-warning' : ''} ${profile.language === 'en' ? 'lang-en' : ''}`}>
       {pageHeader}
 
       <header className="account-header">
@@ -277,9 +357,32 @@ function AccountPage({ projects, profile, isLoggedIn, onSaveProfile, onLogin, on
         </button>
       </header>
 
-      <StatisticChart title={t('workTimeThisWeek')} unit="h" points={accountCharts.workTime} labels={accountCharts.labels} periodLabel={chartPeriodLabel} />
+      {!profile.emailVerified ? (
+        <section className="auth-card email-verification-card">
+          <span className="field-label">{t('emailVerification')}</span>
+          <button
+            type="button"
+            className="primary"
+            disabled={verificationCooldown > 0}
+            onClick={async () => {
+              try {
+                await onResendVerification()
+                setVerificationMessage(t('verificationEmailSent'))
+                setVerificationCooldown(60)
+              } catch (error) {
+                setVerificationMessage(getAuthErrorMessage(error))
+              }
+            }}
+          >
+            {verificationCooldown > 0 ? `${t('resendVerification')} (${verificationCooldown}s)` : t('resendVerification')}
+          </button>
+          {verificationMessage ? <p className="auth-message">{verificationMessage}</p> : null}
+        </section>
+      ) : null}
 
-      <StatisticChart title={t('efficiency')} unit="" points={accountCharts.efficiency} labels={accountCharts.labels} periodLabel={chartPeriodLabel} />
+      <StatisticChart className="work-time-chart" title={t('workTimeThisWeek')} unit="h" points={accountCharts.workTime} labels={accountCharts.labels} periodLabel={chartPeriodLabel} />
+
+      <StatisticChart className="efficiency-chart" title={t('efficiency')} unit="" points={accountCharts.efficiency} labels={accountCharts.labels} periodLabel={chartPeriodLabel} />
 
       <section className="metrics-grid">
         <div>
@@ -325,16 +428,20 @@ function AccountPage({ projects, profile, isLoggedIn, onSaveProfile, onLogin, on
             </header>
             <form
               className="settings-form"
-              onSubmit={(event) => {
+              onSubmit={async (event) => {
                 event.preventDefault()
                 if (settingsPassword.next !== settingsPassword.confirm) {
                   setSettingsMessage(t('newPasswordMismatch'))
                   return
                 }
 
-                onSaveProfile(settingsForm)
-                setSettingsMessage(t('settingsSaved'))
-                setSettingsOpen(false)
+                try {
+                  await onSaveProfile(settingsForm, settingsPassword.next)
+                  setSettingsMessage(t('settingsSaved'))
+                  setSettingsOpen(false)
+                } catch (error) {
+                  setSettingsMessage(getAuthErrorMessage(error))
+                }
               }}
             >
               <section>
@@ -351,6 +458,7 @@ function AccountPage({ projects, profile, isLoggedIn, onSaveProfile, onLogin, on
                   <input
                     type="email"
                     value={settingsForm.email}
+                    disabled
                     onChange={(event) => setSettingsForm((current) => ({ ...current, email: event.target.value }))}
                   />
                 </label>

@@ -655,6 +655,14 @@ h3 {
   font-weight: 800;
 }
 
+.auth-link-button {
+  min-height: 34px;
+  border: 0;
+  background: transparent;
+  color: #727681;
+  font-weight: 850;
+}
+
 .settings-sheet {
   max-height: min(760px, calc(100svh - 32px));
   overflow: auto;
@@ -3479,6 +3487,11 @@ h3 {
     grid-row: 2;
   }
 
+  .account-page .email-verification-card {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
   .account-page .profile-form {
     grid-column: 2;
     grid-row: 4;
@@ -3504,14 +3517,24 @@ h3 {
     min-height: 308px;
   }
 
-  .account-page .stat-chart-card:nth-of-type(1) {
+  .account-page .work-time-chart {
     grid-column: 1;
     grid-row: 3;
   }
 
-  .account-page .stat-chart-card:nth-of-type(2) {
+  .account-page .efficiency-chart {
     grid-column: 1;
     grid-row: 4;
+  }
+
+  .account-page.has-email-warning .metrics-grid,
+  .account-page.has-email-warning .work-time-chart {
+    grid-row: 4;
+  }
+
+  .account-page.has-email-warning .profile-form,
+  .account-page.has-email-warning .efficiency-chart {
+    grid-row: 5;
   }
 
   .tab-bar {

@@ -16,14 +16,25 @@ import {
   updateSubtitleTiming,
   updateProjectTask,
   updateProjectBilling,
+  setCurrentUserId,
 } from './utils/db'
 import { DEFAULT_BILLING_SETTINGS, normalizeBillingSettings } from './utils/earnings'
+import {
+  changeCurrentUserPassword,
+  getAuthErrorMessage,
+  loginWithEmail,
+  logoutUser,
+  registerWithEmail,
+  resendVerificationEmail,
+  sendResetPassword,
+  watchAuthState,
+} from './firebase/auth'
 import './styles/app.css'
 
-const AUTH_KEY = 'pocketsub-auth'
 const DEFAULT_PROFILE = {
   userName: '',
   email: '',
+  emailVerified: false,
   defaultPricePerLine: 0.8,
   billingSettings: DEFAULT_BILLING_SETTINGS,
   language: 'zh-CN',
@@ -36,7 +47,8 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [pendingDeleteId, setPendingDeleteId] = useState('')
-  const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem(AUTH_KEY) === 'true')
+  const [currentUser, setCurrentUser] = useState(null)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [profile, setProfile] = useState(DEFAULT_PROFILE)
 
   const activeProject = useMemo(() => {
@@ -48,28 +60,49 @@ function App() {
   }, [pendingDeleteId, projects])
 
   const refreshProjects = useCallback(async () => {
-    if (!isLoggedIn) {
+    if (!currentUser) {
       return
     }
 
     const allProjects = await getAllProjects()
     setProjects(allProjects)
-  }, [isLoggedIn])
+  }, [currentUser])
+
+  useEffect(() => {
+    const unsubscribe = watchAuthState((user) => {
+      setCurrentUser(user)
+      setCurrentUserId(user?.uid || '')
+      setIsLoggedIn(Boolean(user))
+    })
+
+    return unsubscribe
+  }, [])
 
   useEffect(() => {
     setLoading(true)
 
-    if (!isLoggedIn) {
+    if (!currentUser) {
       setProjects([])
       setProfile(DEFAULT_PROFILE)
       setLoading(false)
       return
     }
 
-    Promise.all([refreshProjects(), getProfile().then(setProfile)])
+    Promise.all([
+      refreshProjects(),
+      getProfile().then((savedProfile) => {
+        setProfile({
+          ...DEFAULT_PROFILE,
+          ...savedProfile,
+          email: currentUser.email || savedProfile.email || '',
+          emailVerified: Boolean(currentUser.emailVerified),
+          userName: savedProfile.userName || currentUser.displayName || '',
+        })
+      }),
+    ])
       .catch(() => setError('读取项目失败，请稍后重试。'))
       .finally(() => setLoading(false))
-  }, [isLoggedIn, refreshProjects])
+  }, [currentUser, refreshProjects])
 
   function updateProjectInMemory(projectId, updater, shouldSort = false) {
     setProjects((currentProjects) => {
@@ -396,21 +429,38 @@ function App() {
     })
   }, [isLoggedIn])
 
-  const handleSaveProfile = useCallback(async (nextProfile) => {
+  const handleSaveProfile = useCallback(async (nextProfile, nextPassword = '') => {
     if (!isLoggedIn) {
       setProfile(nextProfile)
       return
     }
 
-    setProfile(nextProfile)
-    const savedProfile = await saveProfile(nextProfile)
+    if (nextPassword) {
+      await changeCurrentUserPassword(nextPassword)
+    }
+
+    const profileToSave = {
+      ...nextProfile,
+      email: currentUser?.email || nextProfile.email || '',
+      emailVerified: Boolean(currentUser?.emailVerified),
+    }
+
+    setProfile(profileToSave)
+    const savedProfile = await saveProfile(profileToSave)
     setProfile(savedProfile)
-  }, [isLoggedIn])
+  }, [currentUser, isLoggedIn])
 
   const handleLogin = useCallback(async (loginProfile) => {
+    const guestProjects = projects
+    const user = loginProfile.mode === 'register'
+      ? await registerWithEmail(loginProfile)
+      : await loginWithEmail(loginProfile)
+    setCurrentUserId(user.uid)
+
     const nextProfile = {
-      userName: loginProfile.userName || 'User',
-      email: loginProfile.email || profile.email || '',
+      userName: loginProfile.userName || user.displayName || profile.userName || '',
+      email: user.email || loginProfile.email || '',
+      emailVerified: Boolean(user.emailVerified),
       defaultPricePerLine: Number(loginProfile.defaultPricePerLine) || profile.defaultPricePerLine || DEFAULT_PROFILE.defaultPricePerLine,
       billingSettings: normalizeBillingSettings(profile.billingSettings),
       language: profile.language || DEFAULT_PROFILE.language,
@@ -418,27 +468,40 @@ function App() {
     }
 
     await saveProfile(nextProfile)
-    await Promise.all(projects.map((project) => saveProject({
+    await Promise.all(guestProjects.map((project) => saveProject({
       ...project,
       pricePerLine: project.pricePerLine ?? nextProfile.defaultPricePerLine,
     })))
-    localStorage.setItem(AUTH_KEY, 'true')
-    setProfile(nextProfile)
-    setIsLoggedIn(true)
-  }, [profile.billingSettings, profile.compactMode, profile.defaultPricePerLine, profile.email, profile.language, projects])
 
-  const handleLogout = useCallback(() => {
-    localStorage.removeItem(AUTH_KEY)
+    const allProjects = await getAllProjects()
+    setProfile(nextProfile)
+    setProjects(allProjects)
+    setIsLoggedIn(true)
+    setCurrentUser(user)
+  }, [profile.billingSettings, profile.compactMode, profile.defaultPricePerLine, profile.language, profile.userName, projects])
+
+  const handleLogout = useCallback(async () => {
+    await logoutUser()
     setIsLoggedIn(false)
+    setCurrentUser(null)
+    setCurrentUserId('')
     setProjects([])
     setProfile(DEFAULT_PROFILE)
     setRoute({ name: 'home' })
   }, [])
 
+  const handleResetPassword = useCallback(async (email) => {
+    await sendResetPassword(email)
+  }, [])
+
+  const handleResendVerification = useCallback(async () => {
+    await resendVerificationEmail()
+  }, [])
+
   if (loading) {
     return (
       <main className="page centered-page">
-        <p className="muted">正在读取本地字幕项目...</p>
+        <p className="muted">正在读取字幕项目...</p>
       </main>
     )
   }
@@ -498,6 +561,9 @@ function App() {
         onSaveProfile={handleSaveProfile}
         onLogin={handleLogin}
         onLogout={handleLogout}
+        onResetPassword={handleResetPassword}
+        onResendVerification={handleResendVerification}
+        getAuthErrorMessage={getAuthErrorMessage}
         onNavigate={(name) => setRoute({ name })}
       />
     )

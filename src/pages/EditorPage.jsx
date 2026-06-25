@@ -97,7 +97,7 @@ function EditorPage({
       return
     }
 
-    setYoutubeEmbedUrl(buildYouTubeEmbedUrl(project.video.videoId))
+    setYoutubeEmbedUrl(buildYouTubeEmbedUrl(project.video.videoId, 0, 0, false))
   }, [isYouTubeVideo, project.video?.videoId])
 
   const nextTodoIndex = useMemo(() => {
@@ -129,6 +129,16 @@ function EditorPage({
     const bounded = Math.min(Math.max(index, 0), project.subtitles.length - 1)
     setContextOpen(false)
     setCurrentIndex(bounded)
+
+    if (isFileVideo && videoRef.current) {
+      const nextSubtitle = project.subtitles[bounded]
+      if (nextSubtitle) {
+        const nextStart = parseSrtTime(nextSubtitle.start)
+        videoRef.current.currentTime = nextStart
+        videoRef.current.pause()
+        clipEndRef.current = 0
+      }
+    }
   }
 
   function getSubtitlesWithDraft() {
@@ -208,7 +218,7 @@ function EditorPage({
     const end = parseSrtTime(subtitle.end)
 
     if (isYouTubeVideo && project.video?.videoId) {
-      setYoutubeEmbedUrl(buildYouTubeEmbedUrl(project.video.videoId, start, end))
+      setYoutubeEmbedUrl(buildYouTubeEmbedUrl(project.video.videoId, start, end, true))
       return
     }
 
@@ -218,9 +228,10 @@ function EditorPage({
 
     const video = videoRef.current
 
-    clipEndRef.current = end
+    clipEndRef.current = Math.max(start, end - 0.05)
+    video.pause()
     video.currentTime = start
-    video.play()
+    video.play().catch(() => {})
   }
 
   function handleVideoTimeUpdate() {
@@ -228,6 +239,7 @@ function EditorPage({
 
     if (video && clipEndRef.current && video.currentTime >= clipEndRef.current) {
       video.pause()
+      video.currentTime = clipEndRef.current
       clipEndRef.current = 0
     }
   }

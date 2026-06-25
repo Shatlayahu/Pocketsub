@@ -58,7 +58,7 @@ function OverviewPage({
       return
     }
 
-    setYoutubeEmbedUrl(buildYouTubeEmbedUrl(project.video.videoId))
+    setYoutubeEmbedUrl(buildYouTubeEmbedUrl(project.video.videoId, 0, 0, false))
   }, [isYouTubeVideo, project.video?.videoId])
 
   const lines = useMemo(() => {
@@ -127,12 +127,12 @@ function OverviewPage({
 
     if (isFileVideo && videoRef.current) {
       videoRef.current.currentTime = start
-      videoRef.current.play()
+      videoRef.current.pause()
       return
     }
 
     if (isYouTubeVideo && project.video?.videoId) {
-      setYoutubeEmbedUrl(buildYouTubeEmbedUrl(project.video.videoId, start, end))
+      setYoutubeEmbedUrl(buildYouTubeEmbedUrl(project.video.videoId, start, end, false))
     }
   }
 
