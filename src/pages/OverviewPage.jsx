@@ -36,6 +36,7 @@ function OverviewPage({
   const [youtubeEmbedUrl, setYoutubeEmbedUrl] = useState('')
 
   const activeLine = project.subtitles[activeIndex]
+  const activeCaption = activeLine?.translation || activeLine?.original || t('noSubtitle')
   const isYouTubeVideo = project.video?.source === 'youtube'
   const isFileVideo = Boolean(project.video?.blob)
   const hasPlayableVideo = isFileVideo || isYouTubeVideo
@@ -158,21 +159,31 @@ function OverviewPage({
 
       <section className={`overview-video ${hasPlayableVideo ? '' : 'empty'}`}>
         {isFileVideo ? (
-          <video
-            ref={videoRef}
-            src={videoUrl}
-            controls
-            playsInline
-            preload="metadata"
-            onTimeUpdate={handleTimeUpdate}
-          />
+          <div className="video-frame-shell">
+            <video
+              ref={videoRef}
+              src={videoUrl}
+              controls
+              playsInline
+              preload="metadata"
+              onTimeUpdate={handleTimeUpdate}
+            />
+            <div className="video-subtitle-overlay" aria-live="polite">
+              {activeCaption}
+            </div>
+          </div>
         ) : isYouTubeVideo ? (
-          <iframe
-            title={project.video.name}
-            src={youtubeEmbedUrl}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-          />
+          <div className="video-frame-shell">
+            <iframe
+              title={project.video.name}
+              src={youtubeEmbedUrl}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+            <div className="video-subtitle-overlay" aria-live="polite">
+              {activeCaption}
+            </div>
+          </div>
         ) : (
           <button
             type="button"
@@ -186,7 +197,7 @@ function OverviewPage({
 
         <div className="current-caption">
           <span className="field-label">{t('currentSubtitle')}</span>
-          <p>{activeLine?.translation || activeLine?.original || t('noSubtitle')}</p>
+          <p>{activeCaption}</p>
         </div>
 
         <div className="media-tools">

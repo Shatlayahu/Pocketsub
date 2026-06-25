@@ -75,17 +75,44 @@ export async function changeCurrentUserPassword(nextPassword) {
   await updatePassword(auth.currentUser, nextPassword)
 }
 
-export function getAuthErrorMessage(error) {
-  const code = error?.code || ''
-
-  if (code.includes('auth/email-already-in-use')) return '邮箱已经被注册。'
-  if (code.includes('auth/invalid-email')) return '邮箱格式不正确。'
-  if (code.includes('auth/user-not-found')) return '找不到该邮箱对应的账户。'
-  if (code.includes('auth/invalid-credential')) return '邮箱或密码不正确。'
-  if (code.includes('auth/weak-password')) return '密码至少需要 6 位。'
-  if (code.includes('auth/requires-recent-login')) return '为了安全，请重新登录后再修改密码。'
-  if (code.includes('auth/too-many-requests')) return '请求过于频繁，请稍后再试。'
-
-  return error?.message || '认证失败，请稍后重试。'
+const authErrorMessages = {
+  'auth/admin-restricted-operation': '当前认证方式未开启，请在 Firebase Console 中启用邮箱密码登录。',
+  'auth/configuration-not-found': 'Firebase Authentication 尚未正确配置。',
+  'auth/email-already-in-use': '邮箱已经被注册。',
+  'auth/invalid-email': '邮箱格式不正确。',
+  'auth/invalid-credential': '邮箱或密码不正确。',
+  'auth/missing-email': '请输入邮箱。',
+  'auth/missing-password': '请输入密码。',
+  'auth/network-request-failed': '网络连接失败，请检查手机网络、Wi-Fi 或 Firebase 域名配置。',
+  'auth/operation-not-allowed': '邮箱密码登录方式未开启，请在 Firebase Console 中启用 Email/Password。',
+  'auth/popup-closed-by-user': '登录窗口已关闭，请重新尝试。',
+  'auth/requires-recent-login': '为了安全，请重新登录后再修改密码。',
+  'auth/too-many-requests': '请求过于频繁，请稍后再试。',
+  'auth/unauthorized-domain': '当前访问域名未授权，请在 Firebase Authentication 的 Authorized domains 中添加该域名。',
+  'auth/user-disabled': '该账户已被禁用。',
+  'auth/user-not-found': '找不到该邮箱对应的账户。',
+  'auth/weak-password': '密码至少需要 6 位。',
+  'auth/wrong-password': '邮箱或密码不正确。',
 }
 
+function extractAuthCode(error) {
+  const code = error?.code || ''
+
+  if (code) {
+    return code
+  }
+
+  const message = error?.message || ''
+  const match = message.match(/auth\/[a-z0-9-]+/i)
+  return match?.[0] || ''
+}
+
+export function getAuthErrorMessage(error) {
+  const code = extractAuthCode(error)
+
+  if (authErrorMessages[code]) {
+    return authErrorMessages[code]
+  }
+
+  return '认证失败，请稍后重试。'
+}

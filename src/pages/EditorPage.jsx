@@ -43,6 +43,7 @@ function EditorPage({
   })
 
   const subtitle = project.subtitles[currentIndex]
+  const currentCaptionText = translation.trim() || subtitle?.original || t('noSubtitle')
   const previousLine = project.subtitles[currentIndex - 1]
   const nextLine = project.subtitles[currentIndex + 1]
   const subtitleTranslation = subtitle?.translation || ''
@@ -353,14 +354,19 @@ function EditorPage({
       <section className={`video-panel ${hasPlayableVideo ? '' : 'empty'}`}>
         {isFileVideo ? (
           <>
-            <video
-              ref={videoRef}
-              src={videoUrl}
-              controls
-              playsInline
-              preload="metadata"
-              onTimeUpdate={handleVideoTimeUpdate}
-            />
+            <div className="video-frame-shell">
+              <video
+                ref={videoRef}
+                src={videoUrl}
+                controls
+                playsInline
+                preload="metadata"
+                onTimeUpdate={handleVideoTimeUpdate}
+              />
+              <div className="video-subtitle-overlay" aria-live="polite">
+                {currentCaptionText}
+              </div>
+            </div>
             <div className="video-actions">
               <div>
                 <span className="field-label">{t('video')}</span>
@@ -373,12 +379,17 @@ function EditorPage({
           </>
         ) : isYouTubeVideo ? (
           <>
-            <iframe
-              title={project.video.name}
-              src={youtubeEmbedUrl}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-            />
+            <div className="video-frame-shell">
+              <iframe
+                title={project.video.name}
+                src={youtubeEmbedUrl}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+              <div className="video-subtitle-overlay" aria-live="polite">
+                {currentCaptionText}
+              </div>
+            </div>
             <div className="video-actions">
               <div>
                 <span className="field-label">YouTube</span>
